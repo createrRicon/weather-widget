@@ -13,11 +13,21 @@ const CITIES = [
   { name: "Shanghai", country: "China", lat: 31.23, lon: 121.47 },
 ];
 
+function aqiLabel(aqi: number) {
+  if (aqi <= 20) return "Good";
+  if (aqi <= 40) return "Fair";
+  if (aqi <= 60) return "Moderate";
+  if (aqi <= 80) return "Poor";
+  if (aqi <= 100) return "Very Poor";
+  return "Hazardous";
+}
+
 export default function Home() {
   const [cityIndex, setCityIndex] = useState(0);
   const [temp, setTemp] = useState<number | null>(null);
+  const [humidity, setHumidity] = useState<number | null>(null);
+  const [aqi, setAqi] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(false);
   const [now, setNow] = useState(new Date());
 
   const city = CITIES[cityIndex];
@@ -29,19 +39,26 @@ export default function Home() {
 
   useEffect(() => {
     setLoading(true);
-    setError(false);
-    fetch(
-      `https://api.open-meteo.com/v1/forecast?latitude=${city.lat}&longitude=${city.lon}&current=temperature_2m`
-    )
-      .then((r) => r.json())
-      .then((data) => {
-        setTemp(Math.round(data.current.temperature_2m));
+    setTemp(null);
+    setHumidity(null);
+    setAqi(null);
+
+    const weatherFetch = fetch(
+      `https://api.open-meteo.com/v1/forecast?latitude=${city.lat}&longitude=${city.lon}&current=temperature_2m,relative_humidity_2m`
+    ).then((r) => r.json());
+
+    const aqiFetch = fetch(
+      `https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${city.lat}&longitude=${city.lon}&current=european_aqi`
+    ).then((r) => r.json());
+
+    Promise.all([weatherFetch, aqiFetch])
+      .then(([weather, air]) => {
+        setTemp(Math.round(weather.current.temperature_2m));
+        setHumidity(weather.current.relative_humidity_2m);
+        setAqi(Math.round(air.current.european_aqi));
         setLoading(false);
       })
-      .catch(() => {
-        setError(true);
-        setLoading(false);
-      });
+      .catch(() => setLoading(false));
   }, [cityIndex]);
 
   const dateStr = now.toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" });
@@ -49,19 +66,11 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-zinc-100 flex flex-col items-center justify-center p-8">
-      {/* Card */}
       <div
         className="relative w-80 h-80 rounded-3xl overflow-hidden shadow-2xl select-none"
         style={{ fontFamily: "system-ui, sans-serif" }}
       >
-        {/* Background image */}
-        <img
-          src="/bg.png"
-          alt=""
-          className="absolute inset-0 w-full h-full object-cover"
-        />
-
-        {/* Overlay for text readability */}
+        <img src="/bg.png" alt="" className="absolute inset-0 w-full h-full object-cover" />
         <div className="absolute inset-0 bg-black/10" />
 
         {/* Top left: date + time */}
@@ -72,13 +81,23 @@ export default function Home() {
 
         {/* Top right: temperature */}
         <div className="absolute top-3 right-5 text-white text-7xl font-bold leading-none">
-          {loading ? "—" : error ? "?" : `${temp}°`}
+          {loading ? "—" : temp !== null ? `${temp}°` : "?"}
         </div>
 
         {/* Bottom left: city */}
         <div className="absolute bottom-5 left-5 text-white">
           <div className="text-2xl font-bold leading-tight">{city.name}</div>
           <div className="text-2xl font-bold leading-tight">{city.country}</div>
+        </div>
+
+        {/* Bottom right: humidity + AQI */}
+        <div className="absolute bottom-5 right-5 flex flex-col items-end gap-1">
+          <div className="bg-white/20 backdrop-blur-sm rounded-xl px-3 py-1.5 text-white text-xs font-medium">
+            {loading ? "—" : humidity !== null ? `Humidity ${humidity}%` : "?"}
+          </div>
+          <div className="bg-white/20 backdrop-blur-sm rounded-xl px-3 py-1.5 text-white text-xs font-medium">
+            {loading ? "—" : aqi !== null ? `AQI ${aqi} · ${aqiLabel(aqi)}` : "?"}
+          </div>
         </div>
       </div>
 
